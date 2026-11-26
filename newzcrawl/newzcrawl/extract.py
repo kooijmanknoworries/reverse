@@ -108,13 +108,17 @@ class Extractor:
                     add(line)
         return out
 
-    def _write_password_list(self) -> str | None:
+    #: Placeholder password used when the user has configured none.
+    #: Unpack's CLI refuses an empty list (exit 2), so we always hand it at
+    #: least one entry; 7z ignores the password for unencrypted archives.
+    _NO_PASSWORD_PLACEHOLDER = "-"
+
+    def _write_password_list(self) -> str:
         """Materialise the combined password list to a temp file for the
-        Unpack CLI. Returns the temp path, or ``None`` when there are no
-        passwords (Unpack still extracts unencrypted archives)."""
-        pws = self.read_passwords()
-        if not pws:
-            return None
+        Unpack CLI (which requires a non-empty list). When the user has
+        set no passwords, a single placeholder line is used: 7z ignores
+        the password for unencrypted archives, so extraction still works."""
+        pws = self.read_passwords() or [self._NO_PASSWORD_PLACEHOLDER]
         fd, path = tempfile.mkstemp(prefix="newzcrawl_pws_", suffix=".txt")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write("\n".join(pws) + "\n")
@@ -135,16 +139,7 @@ class Extractor:
 
         pwlist = self._write_password_list()
         try:
-            cmd = [self.unpack_exe, archive]
-            if pwlist:
-                cmd.append(pwlist)
-            else:
-                # Unpack expects a list argument; give it an empty one so it
-                # proceeds to extract unencrypted archives.
-                fd, empty = tempfile.mkstemp(prefix="newzcrawl_pws_",
-                                              suffix=".txt")
-                os.close(fd)
-                cmd.append(empty)
+            cmd = [self.unpack_exe, archive, pwlist]
             p = subprocess.run(cmd, capture_output=True, text=True,
                                timeout=self.timeout)
             out, err = p.stdout or "", p.stderr or ""
@@ -188,10 +183,25 @@ class Extractor:
 
 
 def _classify_failure(out: str, err: str, code: int) -> str:
+    """Map Unpack's documented exit codes to user-facing notes.
+
+    ``0`` = password found, ``1`` = no match, ``2`` = bad arguments
+    (missing archive / list), ``3`` = 7-Zip engine missing,
+    ``130`` = stopped.
+    """
+    if code == 3:
+        return ("7-Zip engine (7z.exe) not found next to unpack.exe - "
+                "the tools folder may be incomplete")
+    if code == 2:
+        return "unpack rejected its arguments (archive or password list missing)"
+    if code == 130:
+        return "stopped"
     text = (out + "\n" + err).lower()
-    if "wrong" in text or "password" in text or "encrypted" in text:
-        return "no matching password found (try adding more to the list)"
-    if "crc" in text or "corrupt" in text or "error" in text:
+    if code == 1 or "no matching password" in text:
+        return "no matching password found (add more to passwords.txt)"
+    if "missing volume" in text or "next volume" in text:
+        return "some archive volumes are missing"
+    if "crc" in text or "corrupt" in text:
         return "archive read error (possibly incomplete/corrupt)"
     return f"unpack exited {code}"
 

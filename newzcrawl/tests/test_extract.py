@@ -124,6 +124,54 @@ def test_extract_passes_password_list(tmp_path):
     assert given == ["pw1", "pw2"]
 
 
+def test_extract_no_passwords_uses_placeholder(tmp_path):
+    """Unpack's CLI refuses an EMPTY list (exit 2), so with no passwords
+    configured we must still hand it a non-empty (placeholder) list; 7z
+    ignores the password for unencrypted archives."""
+    fake = make_fake_unpack(tmp_path)
+    dl = tmp_path / "dl"
+    dl.mkdir()
+    arch = dl / "plain.zip"
+    arch.write_bytes(b"zipdata")
+    ex = Extractor(fake, app_dir=str(tmp_path))  # no password paths at all
+    r = ex.extract(str(arch))
+    assert r.ok and r.action == "extracted"
+    given = (dl / ".pw_given").read_text().splitlines()
+    assert len(given) == 1 and given[0] == Extractor._NO_PASSWORD_PLACEHOLDER
+
+
+def _fake_unpack_exiting(code, tmp_path, text=""):
+    """Fake unpack that just prints text and exits with ``code``."""
+    p = tmp_path / f"unpack_exit_{code}"
+    p.write_text(textwrap.dedent(f"""\
+        #!/bin/sh
+        if [ -n "$2" ]; then cat "$2" > "$(dirname "$1")/.pw_given"; fi
+        echo "{text}"
+        exit {code}
+    """))
+    p.chmod(p.stat().st_mode | stat.S_IEXEC)
+    return str(p)
+
+
+def test_extract_failure_notes_by_exit_code(tmp_path):
+    dl = tmp_path / "dl"
+    dl.mkdir()
+    arch = dl / "x.zip"
+    arch.write_bytes(b"z")
+    # 1 = no matching password
+    ex = Extractor(_fake_unpack_exiting(1, tmp_path,
+                                        "No matching password found."),
+                   app_dir=str(tmp_path))
+    r = ex.extract(str(arch))
+    assert not r.ok and "no matching password" in r.note.lower()
+    # 3 = 7-Zip engine missing
+    ex = Extractor(_fake_unpack_exiting(3, tmp_path,
+                                        "7-Zip engine not found."),
+                   app_dir=str(tmp_path))
+    r = ex.extract(str(arch))
+    assert not r.ok and "7z.exe" in r.note
+
+
 def test_extract_missing_binary_graceful(tmp_path):
     ex = Extractor(str(tmp_path / "absent/unpack.exe"), app_dir=str(tmp_path))
     arch = tmp_path / "a.zip"
