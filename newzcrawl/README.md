@@ -41,30 +41,48 @@ The browser opens `http://127.0.0.1:8765/`. Edit `settings.json`
 (next to the `newzcrawl` folder, or created on first run) to set your
 NNTP host/port/credentials, then click **Test & Connect**.
 
-## Portable Windows 11 build
+## Portable Windows 11 app (end users — recommended)
 
-On a Windows machine:
+**No Python, no installs, no admin required.** The app is built
+automatically on GitHub and published as a ready-to-run zip:
 
-```bat
-build_windows.bat
-```
+1. Download **`NewzCrawl-portable-win-x64.zip`** from the
+   [Releases tab](https://github.com/kooijmanknoworries/reverse/releases).
+2. Unzip it anywhere.
+3. Double-click **`NewzCrawl.exe`**.
 
-This runs `pyinstaller NewzCrawl.spec` and produces
-`dist\NewzCrawl.exe`. Assemble the portable folder:
+The Python interpreter is frozen inside `NewzCrawl.exe` (PyInstaller),
+and every helper tool ships in `tools\` — nothing to collect:
 
 ```
 NewzCrawl\
-  NewzCrawl.exe          (from dist\)
+  NewzCrawl.exe          (the app; Python is inside it)
   NewzCrawl.bat          (launcher)
-  settings.json          (optional; created on first run)
+  settings.json          (created on first run)
   downloads\             (created automatically)
   tools\
     7z\7z.exe            (7-Zip CLI)
-    par2\par2cmdline-x64.exe
+    par2\par2.exe        (par2cmdline)
+    unpack\              (Unpack - password archive extractor)
 ```
 
-Double-click `NewzCrawl.bat` (or `NewzCrawl.exe`). Everything is local
-and portable — copy the folder anywhere, no installer, no admin.
+Edit `passwords.txt` (next to the exe, one password per line) to add
+the passwords of your encrypted archives. Everything is local and
+portable — copy the folder anywhere.
+
+### Rebuilding from source (developers only)
+
+This requires Python on the build machine (one-time):
+
+```bat
+python -m pip install --upgrade pyinstaller
+build_windows.bat
+```
+
+`build_windows.bat` runs `pyinstaller NewzCrawl.spec` and assembles the
+self-contained `dist\NewzCrawl\` folder described above. (GitHub's
+`Build Windows portable app` workflow does this automatically on every
+push to `main`.)
 
 ## Tests
 

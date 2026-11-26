@@ -1,18 +1,41 @@
 @echo off
 rem ============================================================
-rem  NewzCrawl - build the Windows 11 portable app
+rem  NewzCrawl - build the Windows 11 portable app (source build)
 rem
-rem  Prerequisites (one time):
-rem      python -m pip install pyinstaller
+rem  NOTE: You normally do NOT need to run this. A ready-to-run
+rem  portable build (no Python required to run) is published in the
+rem  GitHub Releases tab:
+rem      https://github.com/kooijmanknoworries/reverse/releases
+rem  Download NewzCrawl-portable-win-x64.zip, unzip, double-click.
 rem
-rem  Run this from the newzcrawl folder. It builds NewzCrawl.exe and
-rem  assembles a fully self-contained "dist\NewzCrawl\" folder that
-rem  already contains every helper tool (7-Zip, par2cmdline, Unpack) -
-rem  so there is NOTHING to collect by hand. Copy that folder anywhere
-rem  and double-click NewzCrawl.bat.
+rem  This script is only for rebuilding from source. It requires
+rem  Python on this machine (one-time):
+rem      python -m pip install --upgrade pyinstaller
 rem ============================================================
 setlocal
 cd /d "%~dp0"
+
+rem ---- Python is only needed to BUILD, never to RUN ----
+where python >nul 2>nul
+if %errorlevel% neq 0 (
+    echo.
+    echo ============================================================
+    echo  Python is not installed on this machine.
+    echo.
+    echo  That is fine for RUNNING the app: NewzCrawl.exe already
+    echo  contains its own Python. Do NOT install anything - just
+    echo  download the prebuilt portable app instead:
+    echo.
+    echo     https://github.com/kooijmanknoworries/reverse/releases
+    echo
+    echo  (NewzCrawl-portable-win-x64.zip - unzip and run)
+    echo.
+    echo  Only continue with this build if you want to recompile
+    echo  from source, in which case install Python 3.11+ first.
+    echo ============================================================
+    pause
+    exit /b 1
+)
 
 where pyinstaller >nul 2>nul
 if %errorlevel% neq 0 (
@@ -22,7 +45,10 @@ if %errorlevel% neq 0 (
 
 pyinstaller NewzCrawl.spec --noconfirm --clean
 if %errorlevel% neq 0 (
+    echo.
     echo Build FAILED.
+    echo If you do not need to recompile, download the ready-made
+    echo portable app from the GitHub Releases tab instead.
     pause
     exit /b 1
 )
