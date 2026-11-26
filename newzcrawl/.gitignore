@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local user data (portable settings + downloaded content)
+settings.json
+downloads/
+*.nzb
+
+# Build artifacts
+build/
+dist/
+*.spec.bak
+
+# Tool binaries (large, platform-specific) - see tools/README
+tools/7z/
+tools/par2/
+tools/*.exe
+*.exe
+*.dll

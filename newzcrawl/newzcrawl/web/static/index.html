@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NewzCrawl</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161d2e; --panel2:#1c2438; --line:#263252;
+    --txt:#e8edf7; --dim:#8b98b8; --acc:#4da3ff; --acc2:#2f7fe0;
+    --ok:#39c07f; --warn:#e0b341; --err:#e05541; --mono:ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+       font:15px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  header{display:flex;align-items:center;gap:16px;padding:14px 20px;
+         background:var(--panel);border-bottom:1px solid var(--line);
+         position:sticky;top:0;z-index:5;}
+  .logo{font-weight:700;font-size:19px;letter-spacing:.3px}
+  .logo span{color:var(--acc)}
+  .conn{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--dim)}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--err);display:inline-block}
+  .dot.on{background:var(--ok)}
+  nav{display:flex;gap:4px;padding:0 16px;background:var(--panel);
+     border-bottom:1px solid var(--line);overflow-x:auto}
+  nav button{background:none;border:none;color:var(--dim);font-size:14px;
+     padding:12px 14px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+  nav button:hover{color:var(--txt)}
+  nav button.active{color:var(--txt);border-bottom-color:var(--acc);font-weight:600}
+  main{padding:20px;max-width:1100px;margin:0 auto}
+  section{display:none}
+  section.active{display:block}
+  h2{font-size:16px;margin:0 0 14px;color:var(--txt)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+        padding:16px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:14px}
+  .stat .k{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+  .stat .v{font-size:20px;font-weight:600;margin-top:4px;word-break:break-word}
+  label{display:block;font-size:13px;color:var(--dim);margin:10px 0 4px}
+  input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);
+     color:var(--txt);border-radius:6px;padding:9px 10px;font-size:14px}
+  textarea{font-family:var(--mono);font-size:12px;min-height:120px}
+  button.btn{background:var(--acc);border:none;color:#04121f;font-weight:600;
+     padding:9px 16px;border-radius:6px;cursor:pointer;font-size:14px}
+  button.btn:hover{background:var(--acc2)}
+  button.btn.ghost{background:transparent;color:var(--acc);border:1px solid var(--line)}
+  button.btn:disabled{opacity:.5;cursor:default}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .row>label{margin:0}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);
+     white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis}
+  th{color:var(--dim);font-weight:600;position:sticky;top:0;background:var(--panel)}
+  td.num,th.num{text-align:right;font-family:var(--mono)}
+  .tag{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600}
+  .tag.ok{background:rgba(57,192,127,.15);color:var(--ok)}
+  .tag.warn{background:rgba(224,179,65,.15);color:var(--warn)}
+  .tag.err{background:rgba(224,85,65,.15);color:var(--err)}
+  .muted{color:var(--dim)}
+  .bar{height:6px;background:var(--bg);border-radius:4px;overflow:hidden;margin-top:8px}
+  .bar>i{display:block;height:100%;background:var(--acc);width:0}
+  .toast{position:fixed;bottom:20px;right:20px;background:var(--panel2);
+     border:1px solid var(--line);border-left:3px solid var(--acc);
+     padding:12px 16px;border-radius:8px;max-width:360px;font-size:13px;
+     opacity:0;transform:translateY(10px);transition:.25s;z-index:20}
+  .toast.show{opacity:1;transform:none}
+  .toast.err{border-left-color:var(--err)}
+  .hint{font-size:12px;color:var(--dim);margin-top:6px}
+  .switch{position:relative;display:inline-block;width:42px;height:24px}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;inset:0;background:var(--bg);border:1px solid var(--line);
+     border-radius:24px;cursor:pointer;transition:.2s}
+  .slider:before{content:"";position:absolute;width:16px;height:16px;left:4px;top:3px;
+     background:var(--dim);border-radius:50%;transition:.2s}
+  input:checked+.slider{background:rgba(77,163,255,.25);border-color:var(--acc)}
+  input:checked+.slider:before{transform:translateX(18px);background:var(--acc)}
+  .mono{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Newz<span>Crawl</span></div>
+  <div class="conn">
+    <span id="connHost" class="mono"></span>
+    <span class="dot" id="connDot"></span>
+    <span id="connState">disconnected</span>
+  </div>
+</header>
+<nav id="nav">
+  <button data-tab="dashboard" class="active">Dashboard</button>
+  <button data-tab="nzb">NZB</button>
+  <button data-tab="groups">Groups</button>
+  <button data-tab="search">Search</button>
+  <button data-tab="repair">Repair</button>
+  <button data-tab="settings">Settings</button>
+</nav>
+<main>
+
+  <section id="tab-dashboard" class="active">
+    <h2>Connection &amp; Status</h2>
+    <div class="grid" id="dashStats"></div>
+    <div class="card" style="margin-top:16px">
+      <div class="row">
+        <button class="btn" id="btnConnect">Test &amp; Connect</button>
+        <span id="connectMsg" class="muted"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-nzb">
+    <h2>Import &amp; Download NZB</h2>
+    <div class="card">
+      <label>Paste NZB XML, or choose a file</label>
+      <div class="row">
+        <input type="file" id="nzbFile" accept=".nzb,.xml" style="max-width:340px">
+        <button class="btn" id="btnLoadFile">Load file</button>
+      </div>
+      <textarea id="nzbXml" placeholder="&lt;nzb&gt; ... &lt;/nzb&gt;"></textarea>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="btnDownload">Download now</button>
+        <span id="dlMsg" class="muted"></span>
+      </div>
+      <div class="bar"><i id="dlBar"></i></div>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">Results</h2>
+      <div id="dlResults" class="muted">No downloads yet.</div>
+    </div>
+  </section>
+
+  <section id="tab-groups">
+    <h2>Group Browser</h2>
+    <div class="card">
+      <div class="row">
+        <input type="text" id="grpFilter" placeholder="filter, e.g. alt.binaries" style="max-width:340px">
+        <button class="btn" id="btnGroups">List groups</button>
+      </div>
+      <div class="hint" id="grpCount"></div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <input type="text" id="grpName" placeholder="newsgroup name" style="max-width:340px">
+        <input type="number" id="grpWindow" value="100" style="max-width:110px" min="1">
+        <button class="btn" id="btnHeaders">Show recent headers</button>
+      </div>
+      <div style="margin-top:12px;max-height:420px;overflow:auto">
+        <table id="hdrTable"><thead><tr>
+          <th>#</th><th>Subject</th><th>From</th><th>Bytes</th></tr></thead>
+          <tbody></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-search">
+    <h2>Local Header Search</h2>
+    <div class="card">
+      <div class="row">
+        <input type="text" id="srchQ" placeholder='e.g. "The Matrix" from:anon groups:alt.binaries' style="max-width:560px">
+        <button class="btn" id="btnSearch">Search</button>
+      </div>
+      <div class="hint">Case-insensitive. <span class="mono">from:</span> filters the
+        poster, <span class="mono">groups:</span> restricts newsgroups (comma-separated).
+        Searches recent headers on the connected server.</div>
+      <div style="margin-top:12px;max-height:440px;overflow:auto">
+        <table id="srchTable"><thead><tr>
+          <th>Group</th><th>#</th><th>Subject</th><th>From</th><th class="num">Bytes</th>
+          </tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-repair">
+    <h2>PAR2 Repair</h2>
+    <div class="card">
+      <div class="row">
+        <label class="switch" style="margin:0">
+          <input type="checkbox" id="repairAuto"><span class="slider"></span>
+        </label>
+        <strong>Auto-repair watcher</strong>
+        <span class="hint" id="repairAutoHint">periodically scans downloads/ and
+          repairs incomplete PAR2 sets</span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn ghost" id="btnRepairScan">Scan &amp; repair now</button>
+        <span id="repairMsg" class="muted"></span>
+      </div>
+      <div class="hint">Requires <span class="mono">par2cmdline</span> in
+        <span class="mono">tools/par2/</span> (path configurable in Settings).</div>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">Repair log</h2>
+      <div id="repairLog" class="muted">No actions yet.</div>
+    </div>
+  </section>
+
+  <section id="tab-settings">
+    <h2>Settings</h2>
+    <div class="card">
+      <div id="settingsForm"></div>
+      <div class="row" style="margin-top:16px">
+        <button class="btn" id="btnSaveSettings">Save settings</button>
+        <span id="saveMsg" class="muted"></span>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const toast = (msg, err=false) => {
+  const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (err?" err":"");
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove("show"), 4200);
+};
+async function api(path, opts={}){
+  const res = await fetch(path, opts);
+  let data; try{ data = await res.json(); }catch(e){ data = {}; }
+  if(!res.ok || data.error) throw new Error(data.error || ("HTTP "+res.status));
+  return data;
+}
+const fmtB = n => { n=+n||0;
+  if(n<1024) return n+" B";
+  const u=["KB","MB","GB","TB"]; let i=-1;
+  do{ n/=1024; i++; }while(n>=1024 && i<u.length-1);
+  return n.toFixed(n<10?2:1)+" "+u[i]; };
+
+$$("#nav button").forEach(b=>b.onclick=()=>{
+  $$("#nav button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  $$("#main section").forEach(s=>s.classList.remove("active"));
+  $("#tab-"+b.dataset.tab).classList.add("active");
+  if(b.dataset.tab==="settings") loadSettings();
+});
+
+async function loadStatus(){
+  try{
+    const s = await api("/api/status");
+    const rows = [
+      ["Server", `${s.host}:${s.port}`],
+      ["Status", s.connected?"connected":"disconnected"],
+      ["Search", s.search],
+      ["Auto-repair", s.auto_repair?"on":"off"],
+      ["PAR2 tool", s.par2_available?"available":"missing"],
+      ["Downloads dir", s.downloads_dir||"-"],
+      ["Error", s.last_error||"-"],
+    ];
+    $("#dashStats").innerHTML = rows.map(([k,v])=>
+      `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    $("#connHost").textContent = `${s.host}:${s.port}`;
+    $("#connDot").classList.toggle("on", !!s.connected);
+    $("#connState").textContent = s.connected?"connected":"disconnected";
+    $("#repairAuto").checked = !!s.auto_repair;
+  }catch(e){}
+}
+$("#btnConnect").onclick = async ()=>{
+  $("#connectMsg").textContent = "connecting\u2026";
+  try{ const r = await api("/api/connect",{method:"POST"});
+       toast(r.ok ? "Connected. Capabilities: "+r.capabilities.join(", ")
+                  : "Connection failed: "+r.error, !r.ok); }
+  catch(e){ toast("Connect failed: "+e.message, true); }
+  $("#connectMsg").textContent=""; loadStatus();
+};
+
+$("#btnLoadFile").onclick = async ()=>{
+  const f = $("#nzbFile").files[0]; if(!f) return;
+  $("#nzbXml").value = await f.text(); toast("Loaded "+f.name);
+};
+$("#btnDownload").onclick = async ()=>{
+  const xml = $("#nzbXml").value.trim();
+  if(!xml) return toast("Paste or load an NZB first", true);
+  $("#dlMsg").textContent = "downloading\u2026"; $("#dlBar").style.width="30%";
+  try{
+    const r = await api("/api/download",{method:"POST",
+      headers:{"Content-Type":"application/xml"}, body: xml});
+    $("#dlBar").style.width="100%";
+    $("#dlResults").innerHTML = r.items.map(it=>`
+      <div class="row" style="margin:8px 0">
+        <span class="tag ${it.complete?"ok":(it.ok?"warn":"err")}">
+          ${it.complete?"complete":(it.ok?"incomplete":"failed")}</span>
+        <strong class="mono">${it.name}</strong>
+        <span class="muted">${fmtB(it.size)}</span>
+        <span class="muted">${it.good} good ${it.corrupt} corrupt ${it.missing} missing</span>
+        ${it.holes&&it.holes.length?`<span class="muted">holes: ${it.holes.map(h=>`[${h[0]}-${h[1]})`).join(", ")}</span>`:""}
+      </div>`).join("");
+    toast("Download finished");
+  }catch(e){ $("#dlBar").style.width="0"; toast("Download error: "+e.message, true); }
+  $("#dlMsg").textContent="";
+};
+
+$("#btnGroups").onclick = async ()=>{
+  const f = $("#grpFilter").value.trim();
+  const url = "/api/groups" + (f?`?filter=${encodeURIComponent(f)}`:"");
+  $("#grpCount").textContent = "loading\u2026";
+  try{
+    const r = await api(url);
+    $("#grpCount").textContent = `${r.total} groups (showing first ${r.groups.length})`;
+  }catch(e){ $("#grpCount").textContent=""; toast(e.message,true); }
+};
+$("#btnHeaders").onclick = async ()=>{
+  const g = $("#grpName").value.trim();
+  if(!g) return toast("Enter a newsgroup name", true);
+  const w = $("#grpWindow").value||100;
+  try{
+    const r = await api(`/api/headers?group=${encodeURIComponent(g)}&window=${w}`);
+    $("#hdrTable tbody").innerHTML = r.articles.map(a=>
+      `<tr><td class="num">${a.num}</td><td title="${a.subject}">${a.subject}</td>
+       <td title="${a.from}">${a.from}</td><td class="num">${fmtB(a.bytes)}</td></tr>`).join("");
+  }catch(e){ toast(e.message,true); }
+};
+
+$("#btnSearch").onclick = async ()=>{
+  const q = $("#srchQ").value.trim();
+  if(!q) return toast("Enter a search query", true);
+  try{
+    const r = await api("/api/search",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({query:q})});
+    $("#srchTable tbody").innerHTML = r.hits.length ? r.hits.map(h=>
+      `<tr><td title="${h.group}">${h.group}</td><td class="num">${h.num}</td>
+       <td title="${h.subject}">${h.subject}</td><td title="${h.from}">${h.from}</td>
+       <td class="num">${fmtB(h.size)}</td></tr>`).join("")
+      : `<tr><td colspan="5" class="muted">No hits (searches recent headers on the connected server).</td></tr>`;
+  }catch(e){ toast(e.message,true); }
+};
+
+$("#repairAuto").onchange = async e=>{
+  try{ await api("/api/repair/toggle",{method:"POST",
+       headers:{"Content-Type":"application/json"},
+       body:JSON.stringify({enabled:e.target.checked})});
+       toast(e.target.checked?"Auto-repair on":"Auto-repair off"); loadStatus();
+  }catch(err){ toast(err.message,true); }
+};
+$("#btnRepairScan").onclick = async ()=>{
+  $("#repairMsg").textContent="scanning\u2026";
+  try{
+    const r = await api("/api/repair/scan",{method:"POST"});
+    if(!r.ok) return toast(r.error||"scan failed", true);
+    $("#repairMsg").textContent="";
+    renderRepair(r.actions);
+    toast(`Scan complete: ${r.actions.length} action(s)`);
+  }catch(e){ $("#repairMsg").textContent=""; toast(e.message,true); }
+};
+async function repairStatus(){
+  try{ const r = await api("/api/repair/status"); renderRepair(r.results);
+       $("#repairAuto").checked = r.running; }catch(e){}
+}
+function renderRepair(actions){
+  const el = $("#repairLog");
+  if(!actions.length){ el.innerHTML='<span class="muted">No actions yet.</span>'; return; }
+  el.innerHTML = actions.slice().reverse().map(a=>{
+    const cls = a.action==="verified"?"ok":(a.action==="error"?"err":"warn");
+    return `<div class="row" style="margin:6px 0">
+      <span class="tag ${cls}">${a.action}</span>
+      <span class="mono">${a.par2}</span><span class="muted">${a.note||""}</span></div>`;
+  }).join("");
+}
+
+async function loadSettings(){
+  try{
+    const r = await api("/api/settings");
+    $("#settingsForm").innerHTML = r.schema.map(s=>{
+      const v = s.value;
+      let input;
+      if(s.type==="bool"){
+        input = `<label class="switch" style="margin:8px 0 0"><input type="checkbox"
+           data-key="${s.key}" ${v?"checked":""}><span class="slider"></span></label>`;
+      }else{
+        input = `<input type="${s.type==='int'?'number':'text'}" data-key="${s.key}" value="${v}">`;
+      }
+      return `<div style="display:flex;gap:12px;align-items:center;
+        border-bottom:1px solid var(--line);padding:6px 0">
+        <div style="flex:1"><strong>${s.key}</strong>
+          <div class="hint">${s.description}</div></div>
+        <div style="width:260px">${input}</div></div>`;
+    }).join("");
+  }catch(e){ toast(e.message,true); }
+}
+$("#btnSaveSettings").onclick = async ()=>{
+  const values = {};
+  $$("#settingsForm [data-key]").forEach(el=>{
+    values[el.dataset.key] = el.type==="checkbox" ? el.checked :
+      (el.type==="number" ? Number(el.value) : el.value);
+  });
+  try{
+    const r = await api("/api/settings/set",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({values})});
+    toast(r.rejected.length?("Saved. Ignored: "+r.rejected.join(", ")):"Saved.");
+    $("#saveMsg").textContent="saved";
+    loadStatus();
+  }catch(e){ toast(e.message,true); }
+};
+
+loadStatus();
+setInterval(loadStatus, 8000);
+setInterval(repairStatus, 10000);
+</script>
+</body>
+</html>
