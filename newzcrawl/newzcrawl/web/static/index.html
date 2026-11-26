@@ -306,6 +306,15 @@ $("#btnLoadFile").onclick = async ()=>{
   const f = $("#nzbFile").files[0]; if(!f) return;
   $("#nzbXml").value = await f.text(); toast("Loaded "+f.name);
 };
+// Hook for the desktop window: NewzCrawl.exe pre-loads a .nzb that was
+// double-clicked (or "Open with"ed) into this tab.
+window.__nzbLoaded = (d) => {
+  if(!d || !d.xml) return;
+  $("#nzbXml").value = d.xml;
+  const btn = $$("#nav button").find(b=>b.dataset.tab==="nzb");
+  if(btn) btn.click();
+  toast("Loaded " + (d.name || "NZB file"));
+};
 $("#btnDownload").onclick = async ()=>{
   const xml = $("#nzbXml").value.trim();
   if(!xml) return toast("Paste or load an NZB first", true);

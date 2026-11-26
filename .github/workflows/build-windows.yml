@@ -1,10 +1,15 @@
 name: Build Windows portable app
 
-# Builds NewzCrawl.exe on a real Windows runner (GitHub-hosted) and
-# publishes a ready-to-run portable zip in the Releases tab.
+# Builds NewzCrawl on a real Windows runner (GitHub-hosted) and publishes
+# two ready-to-run artifacts to the Releases tab:
+#
+#   * NewzCrawl-portable-win-x64.zip  - the self-contained portable folder
+#   * NewzCrawl-Setup-<ver>.exe       - the per-user installer (start menu,
+#     desktop icon, .nzb file association, uninstaller)
 #
 # End users never need Python: PyInstaller freezes the interpreter INTO
-# NewzCrawl.exe. This workflow is only the build machine.
+# NewzCrawl.exe, and the dashboard opens in a native window (Edge WebView2,
+# which ships with Windows 11) - no browser needed.
 
 on:
   push:
@@ -17,6 +22,9 @@ on:
 permissions:
   contents: write
 
+env:
+  VERSION: 0.1.0
+
 jobs:
   build:
     runs-on: windows-latest
@@ -27,12 +35,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install PyInstaller
-        run: python -m pip install --upgrade pip pyinstaller
+      - name: Install build dependencies
+        # pythonnet is pinned: the newest releases ship no Windows wheel
+        # (they'd need to be compiled from source), but 3.1.0 has a
+        # prebuilt cp312 win_amd64 wheel. pywebview is pinned to the
+        # version the desktop-window API was validated against.
+        run: python -m pip install --upgrade pip pyinstaller "pywebview==6.2.1" "pythonnet==3.1.0"
+
+      - name: Verify desktop-window backend imports
+        working-directory: newzcrawl
+        run: python -c "import webview, clr; print('webview', webview.__version__ if hasattr(webview,'__version__') else 'ok', '- clr ok')"
 
       - name: Build NewzCrawl.exe
         working-directory: newzcrawl
         run: pyinstaller NewzCrawl.spec --noconfirm --clean
+
+      - name: Build installer (Inno Setup)
+        working-directory: newzcrawl
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" NewzCrawl.iss'
 
       - name: Assemble portable folder and zip
         shell: pwsh
@@ -43,39 +63,55 @@ jobs:
           Copy-Item NewzCrawl.bat dist/NewzCrawl/
           Copy-Item -Recurse -Force tools dist/NewzCrawl/tools
           Compress-Archive -Path dist/NewzCrawl -DestinationPath NewzCrawl-portable-win-x64.zip -Force
-          Get-Item NewzCrawl-portable-win-x64.zip | Select-Object Name, Length
+          Write-Host "=== artifacts ==="
+          Get-ChildItem NewzCrawl-portable-win-x64.zip, dist/NewzCrawl-Setup-*.exe |
+            ForEach-Object { "{0,-45} {1,8:N1} MB" -f $_.Name, ($_.Length/1MB) }
 
       - name: Publish to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.0
-          name: NewzCrawl v0.1.0 (portable, Windows 11 x64)
+          tag_name: v${{ env.VERSION }}
+          name: NewzCrawl v${{ env.VERSION }} (Windows 11 x64)
           body: |
-            Self-contained NewzCrawl portable app for Windows 11 (x64).
-            NewsLeecher-style Usenet client: NNTP downloads, NZB import,
-            PAR2 auto-repair, SuperSearch-style search, and automatic
-            extraction of downloaded archives (including password-protected
-            ones) via the bundled Unpack tool.
-
-            ## Run it (no Python, no installs, no admin)
-            1. Download **NewzCrawl-portable-win-x64.zip** below.
-            2. Unzip it anywhere (e.g. your Desktop or a "NewzCrawl" folder).
-            3. Double-click **NewzCrawl.exe**.
+            NewzCrawl - a NewsLeecher-style Usenet client for Windows 11.
+            NNTP downloads, NZB import, PAR2 auto-repair, local header
+            search, and automatic extraction of downloaded archives (including
+            password-protected ones) via the bundled Unpack tool. The
+            dashboard runs in a **native window** (Edge WebView2) - you do not
+            open a browser.
 
             Everything is bundled: 7-Zip, par2cmdline, and the Unpack
-            password-archive extractor. Add the passwords of your encrypted
-            archives to `passwords.txt` (one per line) next to the exe.
+            password-archive extractor. The Python interpreter is frozen inside
+            NewzCrawl.exe, so **no Python, no installs, no admin** are needed.
 
-            The Python interpreter is frozen inside NewzCrawl.exe -
-            you do NOT need to install Python or anything else.
-          files: newzcrawl/NewzCrawl-portable-win-x64.zip
+            ## Two ways to run it
+            **Portable (no install):** download
+            `NewzCrawl-portable-win-x64.zip`, unzip anywhere, double-click
+            `NewzCrawl.exe`. Settings, downloads and `passwords.txt` live in
+            the folder you unzipped - copy it to move everything.
+
+            **Installed (recommended):** download
+            `NewzCrawl-Setup-<version>.exe` and run it. Creates a Start-menu
+            entry and a desktop shortcut, registers `.nzb` files so
+            double-clicking one opens it in NewzCrawl, and provides an
+            uninstaller. Settings and downloads are stored in
+            `%APPDATA%\NewzCrawl`.
+
+            To use encrypted archives, add their passwords to `passwords.txt`
+            (one per line) - next to the exe when portable, or in
+            `%APPDATA%\NewzCrawl` when installed.
+          files: |
+            newzcrawl/NewzCrawl-portable-win-x64.zip
+            newzcrawl/dist/NewzCrawl-Setup-*.exe
           fail_on_unmatched_files: true
           draft: false
           prerelease: false
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: NewzCrawl-portable-win-x64
-          path: newzcrawl/NewzCrawl-portable-win-x64.zip
+          name: NewzCrawl-win-x64
+          path: |
+            newzcrawl/NewzCrawl-portable-win-x64.zip
+            newzcrawl/dist/NewzCrawl-Setup-*.exe
           retention-days: 90

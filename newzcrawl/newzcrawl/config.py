@@ -149,16 +149,71 @@ def _coerce(value: Any, typ: str) -> Any:
     return value
 
 
-def default_settings_path() -> str:
-    """settings.json next to the app (portable folder layout).
+# ---------------------------------------------------------------------------
+# data location
+# ---------------------------------------------------------------------------
+# NewzCrawl runs in two flavours that differ in *where user data lives*:
+#
+#   * **Portable** — settings.json, downloads/ and passwords.txt sit right
+#     next to the program (the folder you unzipped). Copy it anywhere.
+#   * **Installed** — the program lives in a protected folder (Program
+#     Files, from the installer) but user data goes to the per-user
+#     %APPDATA%\NewzCrawl, which is always writable and survives upgrades.
+#
+# Both flavours keep the bundled tools (tools/7z, tools/par2, tools/unpack)
+# next to the program; only the *writable* data moves.
 
-    In a frozen (PyInstaller) build ``__file__`` lives inside the
-    extraction dir, so the portable root is instead the executable's
-    directory — that keeps settings.json editable and persistent.
+
+def _frozen() -> bool:
+    import sys
+    return bool(getattr(sys, "frozen", False))
+
+
+def app_root() -> str:
+    """Where the program files live (bundled ``tools/`` resolves from here).
+
+    In a frozen build this is the executable's folder; in development it is
+    the project folder that contains the ``newzcrawl`` package.
     """
     import sys
-    if getattr(sys, "frozen", False):
-        root = os.path.dirname(os.path.abspath(sys.executable))
-    else:
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(root, "settings.json")
+    if _frozen():
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def is_portable() -> bool:
+    """True when user data should live next to the program (portable).
+
+    A program that sits in a *system* location is treated as an installed
+    build (data goes to %APPDATA%); anywhere else it is portable (data
+    sits alongside the program). This covers per-machine installs
+    (Program Files), per-user installs (LocalAppData\\Programs) and the
+    portable zip (any folder, e.g. the Desktop).
+    """
+    if not _frozen():
+        # Development: data next to the source tree (existing behaviour).
+        return True
+    exe_dir = os.path.abspath(app_root()).lower()
+    # Per-machine install under a protected system folder.
+    for pf in ("ProgramFiles", "ProgramFiles(x86)", "ProgramFiles(arm)"):
+        base = os.environ.get(pf)
+        if base and exe_dir.startswith(base.lower()):
+            return False
+    # Per-user install in the modern LocalAppData\Programs layout.
+    la = os.environ.get("LOCALAPPDATA")
+    if la and exe_dir.startswith(os.path.join(la, "Programs").lower()):
+        return False
+    return True
+
+
+def data_dir() -> str:
+    """Directory that holds settings.json, downloads/ and passwords.txt."""
+    if is_portable():
+        return app_root()
+    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "NewzCrawl")
+
+
+def default_settings_path() -> str:
+    """settings.json in the data directory (portable or %APPDATA%)."""
+    return os.path.join(data_dir(), "settings.json")

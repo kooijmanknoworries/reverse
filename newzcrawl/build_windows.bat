@@ -2,15 +2,18 @@
 rem ============================================================
 rem  NewzCrawl - build the Windows 11 portable app (source build)
 rem
-rem  NOTE: You normally do NOT need to run this. A ready-to-run
-rem  portable build (no Python required to run) is published in the
-rem  GitHub Releases tab:
+rem  NOTE: You normally do NOT need to run this. Ready-to-run builds
+rem  (no Python required to run) are published in the GitHub Releases
+rem  tab:
 rem      https://github.com/kooijmanknoworries/reverse/releases
-rem  Download NewzCrawl-portable-win-x64.zip, unzip, double-click.
+rem  - NewzCrawl-Setup-<ver>.exe  : installer (start menu, .nzb assoc.)
+rem  - NewzCrawl-portable-win-x64.zip : portable folder
+rem  Both open the dashboard in a native window (no browser).
 rem
 rem  This script is only for rebuilding from source. It requires
 rem  Python on this machine (one-time):
-rem      python -m pip install --upgrade pyinstaller
+rem      python -m pip install --upgrade pyinstaller pywebview pythonnet
+rem  To also build the installer, run Inno Setup 6 on NewzCrawl.iss.
 rem ============================================================
 setlocal
 cd /d "%~dp0"
@@ -39,8 +42,8 @@ if %errorlevel% neq 0 (
 
 where pyinstaller >nul 2>nul
 if %errorlevel% neq 0 (
-    echo PyInstaller not found. Installing...
-    python -m pip install --upgrade pyinstaller
+    echo PyInstaller/pywebview not found. Installing...
+    python -m pip install --upgrade pyinstaller pywebview pythonnet
 )
 
 pyinstaller NewzCrawl.spec --noconfirm --clean

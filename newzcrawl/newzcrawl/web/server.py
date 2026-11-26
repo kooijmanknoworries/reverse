@@ -49,6 +49,7 @@ class Core:
         self.queue = None                  # newzcrawl.queue.DownloadQueue
         self.downloads_dir = None
         self.app_dir = None                # portable app root (for tools/)
+        self.data_dir = None               # user data root (settings/downloads)
         self.search = None                 # newzcrawl.search.LocalHeaderSearch
         self.repair = None                 # newzcrawl.repair.Par2
         self.watcher = None                # newzcrawl.repair.RepairWatcher | None
@@ -231,6 +232,10 @@ def api_status(core: Core, query, body):
         "host": c.get("host"), "port": c.get("port"),
         "ui_port": c.get("ui_port"),
         "downloads_dir": core.downloads_dir,
+        "data_dir": getattr(core, "data_dir", None),
+        "portable": bool(getattr(core, "data_dir", None)
+                         and os.path.normcase(core.data_dir)
+                         == os.path.normcase(core.app_dir or "")),
         "auto_repair": c.get("download_auto_repair"),
         "repair_running": bool(core.watcher and core.watcher._thread),
         "par2_available": bool(core.repair and core.repair.available),

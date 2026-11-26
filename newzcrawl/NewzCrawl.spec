@@ -1,13 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for the NewzCrawl Windows 11 portable build.
+# PyInstaller spec for the NewzCrawl Windows 11 build (portable exe and
+# installer payload).
 #
 # Run on a Windows machine (the bundled 7z/par2 tools are Windows
 # binaries):
 #     pyinstaller NewzCrawl.spec
 #
 # Produces a self-contained ``NewzCrawl.exe``. All Python code and the
-# web UI are frozen in; ``tools/7z`` and ``tools/par2`` are expected to
-# sit next to the executable (or be passed via Settings).
+# web UI are frozen in; ``tools/`` (7z, par2, Unpack) sits next to the
+# executable. The dashboard is shown in a native window (pywebview /
+# Edge WebView2), so no browser is required to use the app.
 
 from PyInstaller.utils.hooks import collect_submodules
 
@@ -22,11 +24,18 @@ a = Analysis(
         # frozen package
         ('newzcrawl/web/static', 'newzcrawl/web/static'),
     ],
-    hiddenimports=collect_submodules('newzcrawl'),
+    hiddenimports=(collect_submodules('newzcrawl')
+                  # native desktop window (imported lazily at runtime);
+                  # the hook-webview.py hook ships the WebView2 loader +
+                  # interop assemblies, and the clr/clr_loader hooks ship
+                  # the pythonnet .NET bridge used by the WinForms backend
+                  + collect_submodules('webview')
+                  + ['pythonnet', 'clr', 'clr_loader']),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'matplotlib', 'numpy', 'pandas'],
+    excludes=['matplotlib', 'numpy', 'pandas', 'PyQt5', 'PySide2', 'PySide6',
+              'PyQt6', 'tkinter'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -49,5 +58,5 @@ exe = EXE(
     upx=False,
     runtime_tmpdir=None,
     console=False,          # GUI app: no console window on Windows
-    icon=None,              # set to 'assets/icon.ico' when available
+    icon='assets/icon.ico',  # embedded so shortcuts/uninstaller inherit it
 )
