@@ -71,6 +71,21 @@ def build_core(settings_path: str | None = None) -> Core:
     # Start the auto-repair watcher if enabled.
     if cfg.get("download_auto_repair"):
         core.start_watcher()
+
+    # Extraction / unpacking (drives the bundled Unpack app).
+    core.build_extract_watcher()
+    if cfg.get("extract_auto_monitor"):
+        core.start_extract_watcher()
+
+    # Seed a starter password list next to the app so the user can point
+    # at it or edit it without creating the file by hand.
+    pl = cfg.get("password_list_path")
+    if pl and not os.path.isabs(pl) and \
+            not os.path.exists(os.path.join(root, pl)):
+        with open(os.path.join(root, pl), "w", encoding="utf-8") as f:
+            f.write("# One password per line; lines starting with # are "
+                    "ignored.\n# Add the passwords of your encrypted "
+                    "archives here.\n")
     return core
 
 
@@ -114,6 +129,8 @@ def run(headless: bool = False, port: int | None = None,
     finally:
         if core.watcher is not None:
             core.stop_watcher()
+        if core.extract_watcher is not None:
+            core.stop_extract_watcher()
         server.shutdown()
     return 0
 

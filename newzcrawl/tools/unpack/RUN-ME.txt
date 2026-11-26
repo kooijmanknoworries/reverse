@@ -1,0 +1,28 @@
+
+
+=============================================
+  UNPACK - portable archive password extractor
+=============================================
+
+HOW TO USE (2 steps):
+
+  1. Double-click:   start-unpack.bat
+     (or just double-click unpack.exe)
+
+  2. In the window:  choose your archive (.zip/.7z/.rar)
+                     choose your password list (.txt)
+                     press START
+
+  - The window shows the password currently being tried,
+    progress, and speed in real time.
+  - When a password is found, files are extracted to a
+    "unpack_<name>" folder next to the archive, and the
+    result is appended to "extracted.txt" in THIS folder.
+
+  - Split archives: if you only have part01.rar, the app
+    still finds the password and recovers whatever fits in
+    the available parts. Get the missing parts and re-run
+    for the complete archive.
+
+TIP: copy the whole Unpack folder to a USB stick to use it
+on any Windows 10/11 x64 PC - no installation needed.

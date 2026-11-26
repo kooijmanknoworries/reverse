@@ -37,16 +37,26 @@ DEFAULTS: dict[str, tuple[str, Any, str]] = {
     "download_tracking_days": ("int", 90, "Keep article records for (days)"),
     # --- groups ---
     "group_browsing_max_simultaneous_updates": ("int", 4, "Parallel group header updates"),
+    # --- extraction / unpacking ---
+    "extract_auto_monitor": ("bool", True, "Watch downloads/ and extract archives when complete"),
+    "extract_on_complete": ("bool", True, "Extract a file as soon as its download finishes"),
+    "extract_scan_interval": ("int", 30, "Extraction monitor scan interval (seconds)"),
+    "password_list_path": ("str", "passwords.txt",
+                           "Password list for encrypted archives (one per line, # comments)"),
+    "password_file_path": ("str", "",
+                           "Single password (for known-password archives); blank = use list"),
     # --- UI / behaviour ---
     "always_minimize_to_system_tray": ("bool", False, "Start minimized to tray"),
     "launch_minimized": ("bool", False, "Start minimized"),
     "ui_port": ("int", 8765, "Local web UI port (127.0.0.1 only)"),
     "ui_host": ("str", "127.0.0.1", "Bind address for the local web UI"),
-    # --- external tools ---
-    "par2cmdline_path": ("str", "tools/par2/par2cmdline-x64.exe",
+    # --- external tools (bundled; override with absolute paths if needed) ---
+    "par2cmdline_path": ("str", "tools/par2/par2.exe",
                          "Path to par2cmdline (relative to app or absolute)"),
     "sevenzip_path": ("str", "tools/7z/7z.exe",
                       "Path to the 7-Zip binary (relative to app or absolute)"),
+    "unpack_path": ("str", "tools/unpack/unpack.exe",
+                    "Path to the Unpack extractor (relative to app or absolute)"),
 }
 
 

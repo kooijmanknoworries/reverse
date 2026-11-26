@@ -19,6 +19,8 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from newzcrawl.extract import ARCHIVE_EXTS as _ARCHIVE_EXTS
+
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 _MIME = {
@@ -50,6 +52,8 @@ class Core:
         self.search = None                 # newzcrawl.search.LocalHeaderSearch
         self.repair = None                 # newzcrawl.repair.Par2
         self.watcher = None                # newzcrawl.repair.RepairWatcher | None
+        self.extractor = None              # newzcrawl.extract.Extractor
+        self.extract_watcher = None        # newzcrawl.extract.ExtractWatcher | None
         self.connected = False
         self.last_error = ""
         self._lock = threading.Lock()
@@ -78,6 +82,42 @@ class Core:
     def stop_watcher(self) -> None:
         if self.watcher is not None:
             self.watcher.stop()
+
+    # -- extraction / unpacking ---------------------------------------
+    def _build_extractor(self):
+        from newzcrawl.extract import Extractor
+        path = self._resolve_tool("unpack_path")
+        return Extractor(
+            unpack_exe=path,
+            password_list_path=self.config.get("password_list_path"),
+            password_file_path=self.config.get("password_file_path"),
+            app_dir=self.app_dir or ".",
+        )
+
+    def build_extract_watcher(self) -> None:
+        """Create (once) the extractor + ExtractWatcher over downloads/."""
+        if self.extract_watcher is None:
+            from newzcrawl.extract import ExtractWatcher
+            self.extractor = self._build_extractor()
+            self.extract_watcher = ExtractWatcher(
+                self.extractor, self.downloads_dir,
+                interval=int(self.config.get("extract_scan_interval")),
+            )
+        return self.extract_watcher
+
+    def start_extract_watcher(self) -> None:
+        self.build_extract_watcher()
+        self.extract_watcher.start()
+
+    def stop_extract_watcher(self) -> None:
+        if self.extract_watcher is not None:
+            self.extract_watcher.stop()
+
+    def refresh_passwords(self) -> None:
+        """Rebuild the extractor when password/tool settings change."""
+        if self.extract_watcher is not None:
+            self.extractor = self._build_extractor()
+            self.extract_watcher.extractor = self.extractor
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -194,6 +234,10 @@ def api_status(core: Core, query, body):
         "auto_repair": c.get("download_auto_repair"),
         "repair_running": bool(core.watcher and core.watcher._thread),
         "par2_available": bool(core.repair and core.repair.available),
+        "extract_monitor": c.get("extract_auto_monitor"),
+        "extract_running": bool(core.extract_watcher
+                                and core.extract_watcher._thread),
+        "unpack_available": bool(core.extractor and core.extractor.available),
         "search": "local-header",
     }
 
@@ -221,6 +265,13 @@ def api_settings_set(core: Core, query, body):
         core.start_watcher()
     elif not core.config.get("download_auto_repair") and core.watcher:
         core.stop_watcher()
+    if core.config.get("extract_auto_monitor"):
+        core.start_extract_watcher()
+    else:
+        core.stop_extract_watcher()
+    if any(k in applied for k in ("password_list_path", "password_file_path",
+                                  "unpack_path")):
+        core.refresh_passwords()
     return {"applied": applied, "rejected": rejected}
 
 
@@ -311,15 +362,29 @@ def api_download(core: Core, query, body):
     with core._lock:
         core.queue = core.queue or _new_queue(core)
         results = core.queue.download(nzb_obj)
-    return {
-        "items": [
-            {"name": r.item.name, "ok": r.ok, "complete": r.complete,
-             "path": r.output_path, "size": r.size,
-             "good": r.good, "corrupt": r.corrupt, "missing": r.missing,
-             "holes": [list(h) for h in r.holes], "error": r.error}
-            for r in results
-        ]
-    }
+
+    items = [
+        {"name": r.item.name, "ok": r.ok, "complete": r.complete,
+         "path": r.output_path, "size": r.size,
+         "good": r.good, "corrupt": r.corrupt, "missing": r.missing,
+         "holes": [list(h) for h in r.holes], "error": r.error}
+        for r in results
+    ]
+
+    # Extract archives as soon as their download completes.
+    if core.config.get("extract_on_complete"):
+        core.build_extract_watcher()
+        w = core.extract_watcher
+        for r in results:
+            if r.complete and r.output_path \
+                    and os.path.splitext(r.output_path)[1].lower() \
+                    in _ARCHIVE_EXTS:
+                res = w.try_now(r.output_path)
+                for it in items:
+                    if it["path"] == r.output_path:
+                        it["extracted"] = res.ok
+                        it["extract_note"] = res.note
+    return {"items": items}
 
 
 def api_search(core: Core, query, body):
@@ -363,6 +428,69 @@ def api_repair_toggle(core: Core, query, body):
     else:
         core.stop_watcher()
     return {"running": bool(core.watcher and core.watcher._thread)}
+
+
+# -- extraction / unpacking -------------------------------------------
+def _extract_results(actions):
+    return [{"archive": os.path.basename(a.archive), "ok": a.ok,
+             "action": a.action, "output": a.output_dir, "note": a.note}
+            for a in actions]
+
+
+def api_extract_scan(core: Core, query, body):
+    core.build_extract_watcher()
+    w = core.extract_watcher
+    actions = w.scan_once()
+    return {"ok": True, "actions": _extract_results(actions)}
+
+
+def api_extract_status(core: Core, query, body):
+    core.build_extract_watcher()
+    w = core.extract_watcher
+    # list archives currently in the downloads folder
+    d = core.downloads_dir
+    files = []
+    if d and os.path.isdir(d):
+        for name in sorted(os.listdir(d)):
+            p = os.path.join(d, name)
+            if os.path.isfile(p) and os.path.splitext(name)[1].lower() \
+                    in _ARCHIVE_EXTS:
+                files.append({"name": name, "size": os.path.getsize(p)})
+    return {
+        "running": bool(w and w._thread),
+        "interval": core.config.get("extract_scan_interval"),
+        "auto_monitor": core.config.get("extract_auto_monitor"),
+        "unpack_available": bool(core.extractor and core.extractor.available),
+        "password_list": core.config.get("password_list_path"),
+        "password_count": len(core.extractor.read_passwords()),
+        "archives": files,
+        "results": _extract_results(getattr(w, "results", [])[-50:]),
+    }
+
+
+def api_extract_toggle(core: Core, query, body):
+    payload = _j(body) or {}
+    enable = payload.get("enabled", core.config.get("extract_auto_monitor"))
+    core.config.set("extract_auto_monitor", bool(enable))
+    core.config.save()
+    if enable:
+        core.start_extract_watcher()
+    else:
+        core.stop_extract_watcher()
+    return {"running": bool(core.extract_watcher and
+                            core.extract_watcher._thread)}
+
+
+def api_extract_file(core: Core, query, body):
+    payload = _j(body) or {}
+    name = payload.get("file", "")
+    if not name:
+        raise _ApiError("file name required")
+    path = os.path.join(core.downloads_dir, os.path.basename(name))
+    core.build_extract_watcher()
+    res = core.extract_watcher.try_now(path)
+    return {"ok": res.ok, "archive": os.path.basename(path),
+            "action": res.action, "output": res.output_dir, "note": res.note}
 
 
 def _one_shot_scan(core):
@@ -418,6 +546,10 @@ _ROUTER = {
     "/api/repair/scan": api_repair_scan,
     "/api/repair/status": api_repair_status,
     "/api/repair/toggle": api_repair_toggle,
+    "/api/extract/scan": api_extract_scan,
+    "/api/extract/status": api_extract_status,
+    "/api/extract/toggle": api_extract_toggle,
+    "/api/extract/file": api_extract_file,
 }
 
 

@@ -91,3 +91,25 @@ The repo holds only compiled binaries (no source code).
   header): `AddressOfFunctions` (offset +16), `AddressOfNames` (offset
   +20), `AddressOfNameOrdinals` (offset +24). Walk ordinals → name via
   `AddressOfNameOrdinals[i]` index into the functions table.
+
+## NewzCrawl (rebuilt client, added 2026-11)
+
+`newzcrawl/` contains a clean-room pure-Python rebuild of the NewsLeecher
+client as a Windows 11 portable app (see `newzcrawl/README.md` and
+`newzcrawl/docs/REVERSE_ENGINEERING.md` §5 for the feature mapping).
+
+Layout: `newzcrawl/newzcrawl/` is the Python package (`nntp_client`,
+`yenc`, `nzb`, `queue`, `search`, `repair`, `extract`, `config`, `app`,
+`web/`), `newzcrawl/tests/` is the pytest suite with an in-process mock
+NNTP server, and the packaging files (`NewzCrawl.spec`, `NewzCrawl.bat`,
+`build_windows.bat`) build the portable exe via PyInstaller on Windows.
+`newzcrawl/tools/` bundles the helper tools shipped with the portable app
+(`7z/7z.exe`, `par2/par2.exe`, and the full self-contained `unpack/`
+.NET-8 Unpack app) — see `newzcrawl/tools/README.md`. `extract.py` drives
+Unpack to auto-extract ready archives (single or split) in `downloads/`,
+trying every password in a configurable list for encrypted archives.
+
+- Run: `python -m newzcrawl.app` (web UI on 127.0.0.1:8765).
+- Test: `python -m pytest newzcrawl/tests/ -q` (132 passing).
+- The original binaries (`nl_setup_beta.exe`, `reverse/Reverse.exe`) are
+  analysis references only — do not modify or delete them.

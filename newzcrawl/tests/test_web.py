@@ -2,8 +2,10 @@
 
 import json
 import os
+import stat
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 import urllib.error
@@ -185,6 +187,93 @@ def test_api_repair_missing_binary(app):
     r = _post(base, "/api/repair/scan", "{}")
     assert r["ok"] is False
     assert "par2cmdline" in r["error"]
+
+
+def test_static_traversal_blocked(app):
+    base, _, _ = app
+    try:
+        urllib.request.urlopen(base + "/static/../server.py", timeout=10)
+        raised = False
+    except (urllib.error.HTTPError, urllib.error.URLError):
+        raised = True
+    assert raised
+
+
+# ---------------------------------------------------------------------------
+# extraction endpoints (driven with a fake unpack script)
+# ---------------------------------------------------------------------------
+
+def _fake_unpack(dir_path):
+    p = os.path.join(dir_path, "fake_unpack.sh")
+    with open(p, "w") as f:
+        f.write(textwrap.dedent("""\
+        #!/bin/sh
+        ARCH="$1"
+        base=$(basename "$ARCH"); dir=$(dirname "$ARCH")
+        out="$dir/unpack_$base"; mkdir -p "$out"; echo x > "$out/marker"
+        [ -n "$2" ] && cat "$2" > "$dir/.pw_given"
+        exit 0
+        """))
+    os.chmod(p, os.stat(p).st_mode | stat.S_IEXEC)
+    return p
+
+
+def test_extract_status_and_scan(app):
+    base, core, cfg = app
+    core.build_extract_watcher()
+    _point_extractor(core, _fake_unpack(os.path.dirname(cfg.path)))
+    # drop a "downloaded" archive into the downloads dir
+    with open(os.path.join(core.downloads_dir, "movie.zip"), "wb") as f:
+        f.write(b"zipdata")
+    st = _get(base, "/api/extract/status")
+    assert st["unpack_available"] is True
+    assert any(a["name"] == "movie.zip" for a in st["archives"])
+    # single archives need size stability across two scans
+    _post(base, "/api/extract/scan", "{}")
+    r = _post(base, "/api/extract/scan", "{}")
+    assert r["ok"]
+    assert any(a["ok"] and a["archive"] == "movie.zip" for a in r["actions"])
+    assert os.path.isdir(os.path.join(core.downloads_dir,
+                                      "unpack_movie.zip"))
+
+
+def _point_extractor(core, fake):
+    """Replace the extractor the watcher uses with one backed by ``fake``."""
+    from newzcrawl.extract import Extractor
+    ex = Extractor(fake, app_dir=core.app_dir)
+    core.extractor = ex
+    core.extract_watcher.extractor = ex
+    return ex
+
+
+def test_extract_toggle(app):
+    base, core, cfg = app
+    r = _post(base, "/api/extract/toggle", {"enabled": True})
+    assert r["running"] is True
+    assert core.extract_watcher is not None
+    r = _post(base, "/api/extract/toggle", {"enabled": False})
+    assert r["running"] is False
+    core.stop_extract_watcher()
+
+
+def test_extract_file_manual(app):
+    base, core, cfg = app
+    core.build_extract_watcher()
+    _point_extractor(core, _fake_unpack(os.path.dirname(cfg.path)))
+    with open(os.path.join(core.downloads_dir, "secret.rar"), "wb") as f:
+        f.write(b"rar")
+    r = _post(base, "/api/extract/file", {"file": "secret.rar"})
+    assert r["ok"] is True
+    assert r["archive"] == "secret.rar"
+    assert os.path.isdir(os.path.join(core.downloads_dir,
+                                      "unpack_secret.rar"))
+
+
+def test_status_includes_extract_flags(app):
+    base, core, _ = app
+    s = _get(base, "/api/status")
+    assert "extract_monitor" in s
+    assert "unpack_available" in s
 
 
 def test_api_unknown_endpoint(app):

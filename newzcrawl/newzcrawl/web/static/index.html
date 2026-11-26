@@ -93,6 +93,7 @@
   <button data-tab="groups">Groups</button>
   <button data-tab="search">Search</button>
   <button data-tab="repair">Repair</button>
+  <button data-tab="extract">Extract</button>
   <button data-tab="settings">Settings</button>
 </nav>
 <main>
@@ -194,6 +195,41 @@
     </div>
   </section>
 
+  <section id="tab-extract">
+    <h2>Extract &amp; Unpack</h2>
+    <div class="card">
+      <div class="row">
+        <label class="switch" style="margin:0">
+          <input type="checkbox" id="extractAuto"><span class="slider"></span>
+        </label>
+        <strong>Auto-extract monitor</strong>
+        <span class="hint" id="extractAutoHint">watches downloads/ and extracts
+          archives as soon as they are complete</span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn ghost" id="btnExtractScan">Scan &amp; extract now</button>
+        <span id="extractMsg" class="muted"></span>
+        <span class="muted" id="extractPwCount"></span>
+      </div>
+      <div class="hint">Uses the bundled <span class="mono">Unpack</span> tool
+        (<span class="mono">tools/unpack/</span>) to extract zip / 7z / rar and,
+        for encrypted archives, to try every password in your password list
+        (set <span class="mono">password_list_path</span> in Settings). Downloads
+        that finish as archives are extracted automatically.</div>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">Archives in downloads/</h2>
+      <table id="exTable"><thead><tr>
+        <th>Archive</th><th>Size</th><th style="width:90px"></th>
+      </tr></thead><tbody></tbody></table>
+      <div id="exArchEmpty" class="muted">No archives yet.</div>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">Extraction log</h2>
+      <div id="extractLog" class="muted">No actions yet.</div>
+    </div>
+  </section>
+
   <section id="tab-settings">
     <h2>Settings</h2>
     <div class="card">
@@ -243,6 +279,8 @@ async function loadStatus(){
       ["Search", s.search],
       ["Auto-repair", s.auto_repair?"on":"off"],
       ["PAR2 tool", s.par2_available?"available":"missing"],
+      ["Auto-extract", s.extract_monitor?"on":"off"],
+      ["Unpack tool", s.unpack_available?"available":"missing"],
       ["Downloads dir", s.downloads_dir||"-"],
       ["Error", s.last_error||"-"],
     ];
@@ -252,6 +290,7 @@ async function loadStatus(){
     $("#connDot").classList.toggle("on", !!s.connected);
     $("#connState").textContent = s.connected?"connected":"disconnected";
     $("#repairAuto").checked = !!s.auto_repair;
+    $("#extractAuto").checked = !!s.extract_monitor;
   }catch(e){}
 }
 $("#btnConnect").onclick = async ()=>{
@@ -357,6 +396,69 @@ function renderRepair(actions){
   }).join("");
 }
 
+// --- Extract tab ---
+$("#extractAuto").onchange = async e=>{
+  try{ await api("/api/extract/toggle",{method:"POST",
+       headers:{"Content-Type":"application/json"},
+       body:JSON.stringify({enabled:e.target.checked})});
+       toast(e.target.checked?"Auto-extract on":"Auto-extract off"); loadStatus();
+  }catch(err){ toast(err.message,true); }
+};
+$("#btnExtractScan").onclick = async ()=>{
+  $("#extractMsg").textContent="scanning\u2026";
+  try{
+    const r = await api("/api/extract/scan",{method:"POST"});
+    if(!r.ok) return toast(r.error||"scan failed", true);
+    $("#extractMsg").textContent="";
+    renderExtract(r.actions);
+    toast(`Extract scan complete: ${r.actions.length} action(s)`);
+    extractStatus();
+  }catch(e){ $("#extractMsg").textContent=""; toast(e.message,true); }
+};
+async function extractStatus(){
+  try{
+    const r = await api("/api/extract/status");
+    renderExtract(r.results);
+    $("#extractAuto").checked = r.running;
+    $("#extractPwCount").textContent =
+      (r.password_count ? `${r.password_count} password(s) in list` :
+       "no password list (unencrypted only)");
+    renderArchives(r.archives);
+  }catch(e){}
+}
+function renderArchives(files){
+  const empty = $("#exArchEmpty");
+  empty.style.display = files.length ? "none" : "block";
+  $("#exTable tbody").innerHTML = files.map(f=>
+    `<tr><td class="mono">${f.name}</td><td class="num">${fmtB(f.size)}</td>
+     <td><button class="btn ghost" style="padding:2px 10px"
+        data-extract="${f.name}">Extract</button></td></tr>`).join("");
+  $$("#exTable [data-extract]").forEach(b=>b.onclick = async ()=>{
+    b.disabled = true;
+    try{
+      const r = await api("/api/extract/file",{method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({file:b.dataset.extract})});
+      toast(r.ok ? `Extracted ${r.archive||b.dataset.extract}` :
+              `Extract failed: ${r.note||"unknown"}`, !r.ok);
+      renderExtract([r]);
+    }catch(e){ toast(e.message,true); }
+    b.disabled = false;
+  });
+}
+function renderExtract(actions){
+  const el = $("#extractLog");
+  if(!actions.length){ el.innerHTML='<span class="muted">No actions yet.</span>'; return; }
+  el.innerHTML = actions.slice().reverse().map(a=>{
+    const cls = a.ok?"ok":(a.action==="error"?"err":"warn");
+    return `<div class="row" style="margin:6px 0">
+      <span class="tag ${cls}">${a.ok?"extracted":"failed"}</span>
+      <span class="mono">${a.archive}</span>
+      <span class="muted">${a.output?("\u2192 "+a.output):""}</span>
+      <span class="muted">${a.note||""}</span></div>`;
+  }).join("");
+}
+
 async function loadSettings(){
   try{
     const r = await api("/api/settings");
@@ -394,8 +496,10 @@ $("#btnSaveSettings").onclick = async ()=>{
 };
 
 loadStatus();
+extractStatus();
 setInterval(loadStatus, 8000);
 setInterval(repairStatus, 10000);
+setInterval(extractStatus, 10000);
 </script>
 </body>
 </html>

@@ -114,7 +114,20 @@ class MockNNTPServer:
     def stop(self) -> None:
         self._stop.set()
         if self._srv:
-            self._srv.close()
+            # A bare close() does not reliably unblock a thread parked in
+            # accept() on Linux; queue a self-connection so accept() returns
+            # immediately, then close.
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(2)
+                s.connect((self.host, self.port))
+                s.close()
+            except OSError:
+                pass
+            try:
+                self._srv.close()
+            except OSError:
+                pass
         if self._thread:
             self._thread.join(timeout=5)
 
@@ -131,6 +144,13 @@ class MockNNTPServer:
             try:
                 conn, _ = self._srv.accept()
             except OSError:
+                break
+            if self._stop.is_set():
+                # the self-connection queued by stop(): drop and exit
+                try:
+                    conn.close()
+                except OSError:
+                    pass
                 break
             t = threading.Thread(target=self._handle, args=(conn,), daemon=True)
             t.start()

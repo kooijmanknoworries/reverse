@@ -21,8 +21,15 @@ install, runs from a single folder.
 - **PAR2 repair** — verify/repair incomplete binaries via
   `par2cmdline`, plus an **auto-repair watcher** that periodically scans
   `downloads/` and repairs any incomplete PAR2 sets.
+- **Auto extraction** — watches `downloads/` and, when an archive is ready
+  (complete), extracts it using the bundled **Unpack** app
+  (https://github.com/kooijmanknoworries/unpack). For **password-protected**
+  archives it tries every password in a configurable **password list** and
+  unpacks on the first match. Archived downloads are extracted as soon as
+  they finish.
 - **Local web UI** — a single-page dashboard (connection, NZB download,
-  group browsing, search, repair, settings) served on `127.0.0.1` only.
+  group browsing, search, repair, **extract**, settings) served on
+  `127.0.0.1` only.
 
 ## Quick start (development / source)
 
@@ -80,6 +87,7 @@ newzcrawl/
   queue.py         parallel download queue (reassembly, holes, retry)
   search.py        local header search + provider interface
   repair.py        PAR2 verify/repair + auto-repair watcher
+  extract.py       auto extraction + Unpack driver + password list
   config.py        settings.json store
   app.py           entry point + wiring
   web/
@@ -87,8 +95,8 @@ newzcrawl/
     static/        single-page web UI
 NewzCrawl.spec     PyInstaller spec (portable exe)
 NewzCrawl.bat      Windows launcher
-build_windows.bat  one-shot build script
-tools/             7z + par2cmdline (see tools/README.md)
+build_windows.bat  one-shot build + self-contained folder assembly
+tools/             bundled 7z + par2cmdline + Unpack (see tools/README.md)
 tests/             pytest suite (mock server + end-to-end)
 docs/REVERSE_ENGINEERING.md   original NewsLeecher analysis + mapping
 ```
